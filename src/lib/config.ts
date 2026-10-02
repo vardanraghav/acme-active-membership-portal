@@ -1,0 +1,116 @@
+import fs from 'fs';
+import path from 'path';
+import { MemberFormData, SubmissionRecord } from '@/types';
+
+export interface RuntimeConfig {
+  googleAppsScriptUrl: string;
+  googleSheetUrl: string;
+}
+
+const CONFIG_FILE_PATH = path.join(process.cwd(), 'runtime-config.json');
+const RESPONSES_FILE_PATH = path.join(process.cwd(), 'local-responses.json');
+
+export function getRuntimeConfig(): RuntimeConfig {
+  let fileConfig: Partial<RuntimeConfig> = {};
+
+  try {
+    if (fs.existsSync(CONFIG_FILE_PATH)) {
+      const content = fs.readFileSync(CONFIG_FILE_PATH, 'utf-8');
+      fileConfig = JSON.parse(content);
+    }
+  } catch (err) {
+    // Ignore read errors
+  }
+
+  const gasUrl =
+    fileConfig.googleAppsScriptUrl ||
+    process.env.GOOGLE_APPS_SCRIPT_URL ||
+    process.env.NEXT_PUBLIC_GOOGLE_APPS_SCRIPT_URL ||
+    '';
+
+  const sheetUrl =
+    fileConfig.googleSheetUrl ||
+    process.env.NEXT_PUBLIC_GOOGLE_SHEET_URL ||
+    'https://docs.google.com/spreadsheets/d/1qh2cn7YRFojrQTm7p_GPhHHqz0Qp13KsUm72_b73JM4/edit';
+
+  return {
+    googleAppsScriptUrl: gasUrl,
+    googleSheetUrl: sheetUrl,
+  };
+}
+
+export function saveRuntimeConfig(newConfig: Partial<RuntimeConfig>): RuntimeConfig {
+  const current = getRuntimeConfig();
+  const merged: RuntimeConfig = {
+    googleAppsScriptUrl:
+      typeof newConfig.googleAppsScriptUrl !== 'undefined'
+        ? newConfig.googleAppsScriptUrl.trim()
+        : current.googleAppsScriptUrl,
+    googleSheetUrl:
+      typeof newConfig.googleSheetUrl !== 'undefined'
+        ? newConfig.googleSheetUrl.trim()
+        : current.googleSheetUrl,
+  };
+
+  try {
+    fs.writeFileSync(CONFIG_FILE_PATH, JSON.stringify(merged, null, 2), 'utf-8');
+    // Also update in-memory process.env
+    process.env.GOOGLE_APPS_SCRIPT_URL = merged.googleAppsScriptUrl;
+    process.env.NEXT_PUBLIC_GOOGLE_APPS_SCRIPT_URL = merged.googleAppsScriptUrl;
+    process.env.NEXT_PUBLIC_GOOGLE_SHEET_URL = merged.googleSheetUrl;
+  } catch (err) {
+    console.error('Failed to write runtime-config.json:', err);
+  }
+
+  return merged;
+}
+
+export function getLocalResponses(): SubmissionRecord[] {
+  try {
+    if (fs.existsSync(RESPONSES_FILE_PATH)) {
+      const content = fs.readFileSync(RESPONSES_FILE_PATH, 'utf-8');
+      return JSON.parse(content);
+    }
+  } catch (err) {
+    // Ignore read errors
+  }
+  return [];
+}
+
+export function saveLocalResponse(formData: MemberFormData): SubmissionRecord {
+  const current = getLocalResponses();
+  const now = new Date();
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  const timestamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+
+  const newRecord: SubmissionRecord = {
+    id: `resp_${Date.now()}`,
+    timestamp,
+    fullName: formData.fullName,
+    admissionNumber: formData.admissionNumber,
+    email: formData.email,
+    phone: formData.phone,
+    year: formData.year,
+    branch: formData.branch,
+    section: formData.section,
+    continueActiveMember: formData.continueActiveMember,
+    activityParticipation: formData.activityParticipation,
+    meetingAttendance: formData.meetingAttendance,
+    groupCommunication: formData.groupCommunication,
+    eventParticipation: formData.eventParticipation,
+    areasOfInterest: Array.isArray(formData.areasOfInterest)
+      ? formData.areasOfInterest.join(', ')
+      : formData.areasOfInterest || '',
+    contribution: formData.contribution || '',
+    suggestions: formData.suggestions || '',
+  };
+
+  const updated = [newRecord, ...current];
+  try {
+    fs.writeFileSync(RESPONSES_FILE_PATH, JSON.stringify(updated, null, 2), 'utf-8');
+  } catch (err) {
+    console.error('Failed to write local-responses.json:', err);
+  }
+
+  return newRecord;
+}
