@@ -1,7 +1,7 @@
 # ACME Active Membership Portal — Step-by-Step Setup Guide
 
 **Society**: ACME Society  
-**Department**: Department of Electrical and Electronics Engineering  
+**Department**: DEECE Department of Electrical, Electronics and Communication Engineering  
 **Institution**: Galgotias University, Greater Noida  
 **Hosting**: Vercel (Next.js + TypeScript + Tailwind CSS)  
 **Data Layer**: Google Sheets via Google Apps Script (Zero Custom Database)  
@@ -93,7 +93,7 @@ ADMIN_PASSWORD=TEAMINDIA
 
 # Society Details
 NEXT_PUBLIC_SOCIETY_NAME="ACME Society"
-NEXT_PUBLIC_DEPARTMENT_NAME="Department of Electrical and Electronics Engineering"
+NEXT_PUBLIC_DEPARTMENT_NAME="DEECE Department of Electrical, Electronics and Communication Engineering"
 NEXT_PUBLIC_UNIVERSITY_NAME="Galgotias University"
 ```
 

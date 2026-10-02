@@ -3,7 +3,7 @@ import { FormQuestion } from '@/types';
 export const SOCIETY_INFO = {
   name: 'ACME Society',
   acronym: 'ACME',
-  department: 'Department of Electrical and Electronics Engineering',
+  department: 'DEECE Department of Electrical, Electronics and Communication Engineering',
   university: 'Galgotias University',
   tagline: 'Association of Computer, Mechanical & Electrical Engineering Enthusiasts',
   portalTitle: 'ACME Active Membership Portal',

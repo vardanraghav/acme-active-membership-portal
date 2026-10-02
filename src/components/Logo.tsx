@@ -49,7 +49,7 @@ export const Logo: React.FC<LogoProps> = ({
             </span>
           </div>
           <span className="text-xs text-slate-600 font-medium line-clamp-1">
-            Department of Electrical and Electronics Engineering
+            DEECE Department of Electrical, Electronics and Communication Engineering
           </span>
           <span className="text-[11px] text-slate-500 hidden sm:block">
             Galgotias University

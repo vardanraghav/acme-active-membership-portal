@@ -1,6 +1,6 @@
 # ACME Active Membership Portal
 
-Official Active Membership Registration & Administration Portal for **ACME Society**, **Department of Electrical and Electronics Engineering**, **Galgotias University**.
+Official Active Membership Registration & Administration Portal for **ACME Society**, **DEECE Department of Electrical, Electronics and Communication Engineering**, **Galgotias University**.
 
 Developed with **Next.js**, **React**, **TypeScript**, **Tailwind CSS**, and **Google Sheets** (via Google Apps Script). Ready for direct deployment on **Vercel**.
 
