@@ -252,6 +252,74 @@ export async function submitApplication(
 }
 
 /**
+ * Normalizes a raw response object from Google Sheets / Apps Script
+ * into the SubmissionRecord shape expected by the admin frontend.
+ *
+ * Google Sheets returns keys like "Full Name", "Email ID", "Continue as Active Member"
+ * but AdminDashboard/ResponseDetailModal/CSV export expect camelCase: fullName, email, continueActiveMember
+ */
+function normalizeResponse(raw: any, index: number): SubmissionRecord {
+  if (!raw || typeof raw !== 'object') {
+    return {
+      id: `resp_empty_${index}`,
+      timestamp: '',
+      fullName: '',
+      admissionNumber: '',
+      email: '',
+      phone: '',
+      year: '',
+      branch: '',
+      section: '',
+      continueActiveMember: '',
+      activityParticipation: '',
+      meetingAttendance: '',
+      groupCommunication: '',
+      eventParticipation: '',
+      areasOfInterest: '',
+      contribution: '',
+      suggestions: '',
+    };
+  }
+
+  // Helper: resolve a value from multiple possible key names
+  const pick = (...keys: string[]): string => {
+    for (const k of keys) {
+      if (raw[k] !== undefined && raw[k] !== null) {
+        return String(raw[k]).trim();
+      }
+    }
+    return '';
+  };
+
+  const timestamp = pick('timestamp', 'Timestamp');
+  const admissionNumber = pick('admissionNumber', 'Admission Number', 'admissionNo');
+  const email = pick('email', 'Email ID', 'Email', 'emailId');
+
+  // Generate a stable ID from existing data rather than using array index
+  const id = pick('id', 'ID') || `resp_${Buffer.from(timestamp + admissionNumber + email).toString('base64url').slice(0, 24)}`;
+
+  return {
+    id,
+    timestamp,
+    fullName: pick('fullName', 'Full Name', 'name'),
+    admissionNumber,
+    email,
+    phone: pick('phone', 'Phone Number', 'phoneNumber', 'Phone'),
+    year: pick('year', 'Year'),
+    branch: pick('branch', 'Branch'),
+    section: pick('section', 'Section'),
+    continueActiveMember: pick('continueActiveMember', 'Continue as Active Member', 'continueStatus'),
+    activityParticipation: pick('activityParticipation', 'Activity Participation'),
+    meetingAttendance: pick('meetingAttendance', 'Meeting Attendance'),
+    groupCommunication: pick('groupCommunication', 'Group Communication'),
+    eventParticipation: pick('eventParticipation', 'Event Participation'),
+    areasOfInterest: pick('areasOfInterest', 'Areas of Interest'),
+    contribution: pick('contribution', 'Contribution'),
+    suggestions: pick('suggestions', 'Suggestions for ACME', 'Suggestions'),
+  };
+}
+
+/**
  * Fetch Member Responses (Admin Only)
  */
 export async function fetchMemberResponses(authPassword: string): Promise<SubmissionRecord[]> {
@@ -287,7 +355,9 @@ export async function fetchMemberResponses(authPassword: string): Promise<Submis
     }
 
     if (data && data.success && Array.isArray(data.responses)) {
-      return data.responses;
+      return data.responses
+        .filter((r: any) => r && typeof r === 'object')
+        .map((r: any, i: number) => normalizeResponse(r, i));
     }
     return getLocalResponses();
   } catch (err) {
