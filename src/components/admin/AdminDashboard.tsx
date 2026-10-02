@@ -22,6 +22,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Settings,
+  Trash2,
+  AlertTriangle,
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -43,6 +45,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'submissions' | 'manage_form'>('submissions');
   const [selectedResponse, setSelectedResponse] = useState<SubmissionRecord | null>(null);
+  const [deleteConfirmResponse, setDeleteConfirmResponse] = useState<SubmissionRecord | null>(null);
+  const [isDeletingResponse, setIsDeletingResponse] = useState(false);
+  const [deleteSuccessNotice, setDeleteSuccessNotice] = useState<string | null>(null);
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
   const [isGasConfigured, setIsGasConfigured] = useState(true);
 
@@ -56,6 +61,37 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       })
       .catch(() => {});
   }, [isConfigModalOpen]);
+
+  const handleConfirmDelete = async () => {
+    if (!deleteConfirmResponse) return;
+    setIsDeletingResponse(true);
+    try {
+      const res = await fetch('/api/admin/responses', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          responseId: deleteConfirmResponse.id,
+          admissionNumber: deleteConfirmResponse.admissionNumber,
+          email: deleteConfirmResponse.email,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setDeleteSuccessNotice(`Response from "${deleteConfirmResponse.fullName}" has been deleted.`);
+        setDeleteConfirmResponse(null);
+        setSelectedResponse(null);
+        onRefresh();
+        setTimeout(() => setDeleteSuccessNotice(null), 4000);
+      } else {
+        alert(data.error || 'Failed to delete response');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error deleting response');
+    } finally {
+      setIsDeletingResponse(false);
+    }
+  };
 
   // Filters state
   const [searchTerm, setSearchTerm] = useState('');
@@ -296,6 +332,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             className="inline-flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg text-white bg-amber-800 hover:bg-amber-900 transition-colors flex-shrink-0 shadow-xs"
           >
             <span>Connect Web App URL</span>
+          </button>
+        </div>
+      )}
+
+      {/* Delete Success Banner */}
+      {deleteSuccessNotice && (
+        <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-300 flex items-center justify-between gap-3 text-emerald-900 text-xs font-semibold shadow-xs animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <CheckCircle className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+            <span>{deleteSuccessNotice}</span>
+          </div>
+          <button
+            onClick={() => setDeleteSuccessNotice(null)}
+            className="text-emerald-700 hover:text-emerald-950 text-xs underline"
+          >
+            Dismiss
           </button>
         </div>
       )}
@@ -575,14 +627,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <td className="py-3 px-3 text-slate-400 text-[11px] whitespace-nowrap">
                           {r.timestamp ? r.timestamp.slice(0, 10) : '—'}
                         </td>
-                        <td className="py-3 px-4 text-right">
-                          <button
-                            onClick={() => setSelectedResponse(r)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded text-acme-700 hover:text-acme-800 bg-acme-50 hover:bg-acme-100 transition-colors"
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                            <span>View</span>
-                          </button>
+                        <td className="py-3 px-4 text-right whitespace-nowrap">
+                          <div className="inline-flex items-center gap-1.5 justify-end">
+                            <button
+                              onClick={() => setSelectedResponse(r)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded text-acme-700 hover:text-acme-800 bg-acme-50 hover:bg-acme-100 transition-colors"
+                              title="View response details"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>View</span>
+                            </button>
+                            <button
+                              onClick={() => setDeleteConfirmResponse(r)}
+                              className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 transition-colors"
+                              title="Delete submission"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span className="hidden sm:inline">Delete</span>
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -628,6 +691,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       <ResponseDetailModal
         response={selectedResponse}
         onClose={() => setSelectedResponse(null)}
+        onDelete={(r) => {
+          setSelectedResponse(null);
+          setDeleteConfirmResponse(r);
+        }}
       />
 
       {/* Google Sheet Configuration Modal */}
@@ -641,6 +708,59 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           }
         }}
       />
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmResponse && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-6">
+              <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-4">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-900 text-center mb-1">
+                Delete Member Submission?
+              </h3>
+              <p className="text-xs text-slate-600 text-center mb-4 leading-relaxed">
+                Are you sure you want to permanently delete the response for{' '}
+                <strong className="text-slate-900 font-bold">{deleteConfirmResponse.fullName}</strong>{' '}
+                ({deleteConfirmResponse.admissionNumber || deleteConfirmResponse.email})?
+              </p>
+              <div className="p-3 bg-amber-50 rounded-lg border border-amber-200 text-[11px] text-amber-900 leading-relaxed mb-5">
+                ⚠️ This will permanently remove the response from your local database and the connected Google Sheet.
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  disabled={isDeletingResponse}
+                  onClick={() => setDeleteConfirmResponse(null)}
+                  className="flex-1 px-4 py-2.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isDeletingResponse}
+                  onClick={handleConfirmDelete}
+                  className="flex-1 px-4 py-2.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-xs font-semibold text-white transition-colors disabled:opacity-50 inline-flex items-center justify-center gap-2 shadow-xs cursor-pointer"
+                >
+                  {isDeletingResponse ? (
+                    <>
+                      <RotateCcw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Deleting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

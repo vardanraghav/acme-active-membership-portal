@@ -2,16 +2,18 @@
 
 import React from 'react';
 import { SubmissionRecord } from '@/types';
-import { X, User, Mail, Phone, Calendar, BookOpen, Layers, CheckCircle2, Clock, MessageSquare, Lightbulb } from 'lucide-react';
+import { X, User, Mail, Phone, Calendar, BookOpen, Layers, CheckCircle2, Clock, MessageSquare, Lightbulb, Trash2 } from 'lucide-react';
 
 interface ResponseDetailModalProps {
   response: SubmissionRecord | null;
   onClose: () => void;
+  onDelete?: (response: SubmissionRecord) => void;
 }
 
 export const ResponseDetailModal: React.FC<ResponseDetailModalProps> = ({
   response,
   onClose,
+  onDelete,
 }) => {
   if (!response) return null;
 
@@ -198,7 +200,19 @@ export const ResponseDetailModal: React.FC<ResponseDetailModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-end">
+        <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-3">
+          {onDelete ? (
+            <button
+              onClick={() => onDelete(response)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold text-rose-700 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-colors"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Delete Response</span>
+            </button>
+          ) : (
+            <div />
+          )}
+
           <button
             onClick={onClose}
             className="px-5 py-2 rounded-lg text-sm font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-100 transition-colors"

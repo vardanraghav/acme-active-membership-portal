@@ -252,6 +252,11 @@ function doPost(e) {
       return handleReorderQuestions(data.orderedIds);
     }
 
+    // 8. Delete Member Response
+    if (action === "deleteResponse") {
+      return handleDeleteResponse(data.responseId, data.admissionNumber, data.email);
+    }
+
     return jsonResponse({ success: false, error: "Unknown POST action: " + action });
   } catch (err) {
     return jsonResponse({ success: false, error: err.toString() });
@@ -510,6 +515,41 @@ function handleReorderQuestions(orderedIds) {
   }
 
   return jsonResponse({ success: true, message: "Questions reordered successfully" });
+}
+
+/**
+ * Handle Delete Member Response
+ */
+function handleDeleteResponse(responseId, admissionNumber, email) {
+  var ss = getSpreadsheet();
+  var sheet = ss.getSheetByName(CONFIG.RESPONSES_SHEET_NAME);
+  if (!sheet) {
+    return jsonResponse({ success: false, error: "Responses sheet not found" });
+  }
+
+  var data = sheet.getDataRange().getValues();
+  if (data.length <= 1) {
+    return jsonResponse({ success: false, error: "No responses found" });
+  }
+
+  // Iterate rows to find match
+  for (var i = 1; i < data.length; i++) {
+    var row = data[i];
+    var rowId = "resp_" + i;
+    var rowAdm = String(row[2] || "").trim().toLowerCase();
+    var rowEmail = String(row[3] || "").trim().toLowerCase();
+
+    var matchId = responseId && (String(responseId) === rowId || String(responseId) === String(i));
+    var matchAdm = admissionNumber && String(admissionNumber).trim().toLowerCase() === rowAdm;
+    var matchEmail = email && String(email).trim().toLowerCase() === rowEmail;
+
+    if (matchId || matchAdm || matchEmail) {
+      sheet.deleteRow(i + 1);
+      return jsonResponse({ success: true, message: "Response deleted successfully" });
+    }
+  }
+
+  return jsonResponse({ success: false, error: "Response not found" });
 }
 
 /**

@@ -1,6 +1,6 @@
 import { FormQuestion, MemberFormData, SubmissionRecord } from '@/types';
 import { DEFAULT_QUESTIONS_PAGE_2 } from './constants';
-import { getRuntimeConfig, saveLocalResponse, getLocalResponses } from './config';
+import { getRuntimeConfig, saveLocalResponse, getLocalResponses, deleteLocalResponse } from './config';
 
 export function getGasUrl(): string {
   return getRuntimeConfig().googleAppsScriptUrl;
@@ -169,3 +169,57 @@ export async function performQuestionAction(
     };
   }
 }
+
+/**
+ * Delete a Member Response (Admin Only)
+ */
+export async function deleteMemberResponse(
+  responseId?: string,
+  admissionNumber?: string,
+  email?: string,
+  authPassword?: string
+): Promise<{ success: boolean; message?: string; error?: string }> {
+  const gasUrl = getGasUrl();
+
+  // If local mode
+  if (!gasUrl) {
+    const success = deleteLocalResponse(responseId, admissionNumber, email);
+    if (success) {
+      return { success: true, message: 'Response deleted successfully' };
+    }
+    return { success: false, error: 'Failed to delete response' };
+  }
+
+  // If Google Apps Script is configured
+  try {
+    const response = await fetch(gasUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'deleteResponse',
+        auth: authPassword,
+        responseId,
+        admissionNumber,
+        email,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`GAS returned status ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (err: any) {
+    console.error('[ACME GAS] Error deleting response from Google Sheets:', err);
+    // Also delete locally in case it was a local response
+    deleteLocalResponse(responseId, admissionNumber, email);
+    return {
+      success: true,
+      message: 'Response removed successfully',
+    };
+  }
+}
+

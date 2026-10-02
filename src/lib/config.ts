@@ -114,3 +114,20 @@ export function saveLocalResponse(formData: MemberFormData): SubmissionRecord {
 
   return newRecord;
 }
+
+export function deleteLocalResponse(id?: string, admissionNumber?: string, email?: string): boolean {
+  try {
+    const current = getLocalResponses();
+    const filtered = current.filter((r) => {
+      if (id && r.id === id) return false;
+      if (admissionNumber && r.admissionNumber.trim().toLowerCase() === admissionNumber.trim().toLowerCase()) return false;
+      if (email && r.email.trim().toLowerCase() === email.trim().toLowerCase()) return false;
+      return true;
+    });
+    fs.writeFileSync(RESPONSES_FILE_PATH, JSON.stringify(filtered, null, 2), 'utf-8');
+    return true;
+  } catch (err) {
+    console.error('Failed to delete local response:', err);
+    return false;
+  }
+}
