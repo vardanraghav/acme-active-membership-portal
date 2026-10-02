@@ -44,7 +44,19 @@ export const MemberForm: React.FC = () => {
         if (res.ok) {
           const data = await res.json();
           if (data.success && Array.isArray(data.questions) && data.questions.length > 0) {
-            setDynamicQuestions(data.questions);
+            const normalized: FormQuestion[] = data.questions
+              .filter(Boolean)
+              .map((q: any, index: number) => ({
+                id: String(q.id ?? q.questionId ?? q['Question ID'] ?? `dynamic_${index + 1}`),
+                questionText: String(q.questionText ?? q['Question Text'] ?? '').trim(),
+                page: String(q.page ?? q['Page/Section'] ?? '').includes('1') ? 1 : 2,
+                questionType: q.questionType ?? q.type ?? 'Short Answer',
+                options: Array.isArray(q.options) ? q.options : [],
+                required: q.required === true || String(q.required).toLowerCase() === 'yes',
+                enabled: q.enabled !== false && String(q.enabled).toLowerCase() !== 'no',
+                order: Number(q.order ?? q['Order']) || index + 1,
+              }));
+            setDynamicQuestions(normalized);
           }
         }
       } catch (err) {
@@ -67,7 +79,7 @@ export const MemberForm: React.FC = () => {
     setSubmitError(null);
 
     try {
-      const response = await fetch('/api/submit', {
+      const response = await fetch('/api/member/submit', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -75,18 +87,33 @@ export const MemberForm: React.FC = () => {
         body: JSON.stringify(formData),
       });
 
-      const result = await response.json();
+      const rawText = await response.text();
+      let result: any = null;
+      try {
+        result = JSON.parse(rawText);
+      } catch (parseErr) {
+        console.warn('Unable to parse JSON from /api/member/submit response:', rawText);
+      }
 
-      if (response.ok && result.success) {
+      if (response.ok && result?.success) {
         setIsSubmitted(true);
       } else {
-        setSubmitError(
-          result.error || 'Unable to submit your response. Please check your connection and try again.'
-        );
+        const errorMsg =
+          result?.error ||
+          (result?.details ? `Error: ${result.details}` : null) ||
+          'Unable to submit your response. Please check your connection and try again.';
+
+        console.warn('[ACME Submission]: Submission did not succeed:', {
+          status: response.status,
+          error: result?.error,
+          details: result?.details,
+        });
+
+        setSubmitError(errorMsg);
       }
-    } catch (err) {
-      console.error('Submission network error:', err);
-      setSubmitError('Unable to submit your response. Please check your connection and try again.');
+    } catch (err: any) {
+      console.warn('[ACME Submission]: Network error occurred:', err?.message || err);
+      setSubmitError('Unable to submit your response. Please check your network connection and try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -108,12 +135,15 @@ export const MemberForm: React.FC = () => {
   }
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-5 md:p-8 lg:p-10">
-      {/* Progress Indicator */}
-      <StepIndicator
-        currentStep={currentStep}
-        onStepClick={(step) => setCurrentStep(step)}
-      />
+    <div className="relative bg-white rounded-2xl shadow-xl shadow-slate-200/60 border border-slate-200/90 overflow-hidden">
+      {/* Decorative top accent gradient */}
+      <div className="h-1.5 w-full bg-gradient-to-r from-navy-900 via-acme-600 to-gold-500" />
+      <div className="p-5 md:p-8 lg:p-10">
+        {/* Progress Indicator */}
+        <StepIndicator
+          currentStep={currentStep}
+          onStepClick={(step) => setCurrentStep(step)}
+        />
 
       {/* 2-Step Form with preserved state */}
       {currentStep === 1 && (
@@ -127,20 +157,21 @@ export const MemberForm: React.FC = () => {
         />
       )}
 
-      {currentStep === 2 && (
-        <StepTwo
-          formData={formData}
-          updateFormData={updateFormData}
-          dynamicQuestions={dynamicQuestions}
-          onBack={() => {
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-            setCurrentStep(1);
-          }}
-          onSubmit={handleSubmit}
-          isSubmitting={isSubmitting}
-          submitError={submitError}
-        />
-      )}
+        {currentStep === 2 && (
+          <StepTwo
+            formData={formData}
+            updateFormData={updateFormData}
+            dynamicQuestions={dynamicQuestions}
+            onBack={() => {
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+              setCurrentStep(1);
+            }}
+            onSubmit={handleSubmit}
+            isSubmitting={isSubmitting}
+            submitError={submitError}
+          />
+        )}
+      </div>
     </div>
   );
 };

@@ -47,9 +47,6 @@ export const Logo: React.FC<LogoProps> = ({
             <span className="font-bold text-slate-900 tracking-tight text-base md:text-lg">
               ACME Society
             </span>
-            <span className="text-[10px] font-semibold tracking-wide uppercase px-1.5 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200 hidden sm:inline-block">
-              EEE Dept
-            </span>
           </div>
           <span className="text-xs text-slate-600 font-medium line-clamp-1">
             Department of Electrical and Electronics Engineering

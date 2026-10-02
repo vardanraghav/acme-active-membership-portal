@@ -36,11 +36,11 @@ interface AdminDashboardProps {
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({
-  responses,
-  questions,
-  googleSheetUrl,
+  responses = [],
+  questions = [],
+  googleSheetUrl = '',
   onRefresh,
-  isLoading,
+  isLoading = false,
   onUpdateSheetUrl,
 }) => {
   const [activeTab, setActiveTab] = useState<'submissions' | 'manage_form'>('submissions');
@@ -48,6 +48,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [deleteConfirmResponse, setDeleteConfirmResponse] = useState<SubmissionRecord | null>(null);
   const [isDeletingResponse, setIsDeletingResponse] = useState(false);
   const [deleteSuccessNotice, setDeleteSuccessNotice] = useState<string | null>(null);
+  const [deleteErrorNotice, setDeleteErrorNotice] = useState<string | null>(null);
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
   const [isGasConfigured, setIsGasConfigured] = useState(true);
 
@@ -65,6 +66,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleConfirmDelete = async () => {
     if (!deleteConfirmResponse) return;
     setIsDeletingResponse(true);
+    setDeleteErrorNotice(null);
     try {
       const res = await fetch('/api/admin/responses', {
         method: 'DELETE',
@@ -79,15 +81,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const data = await res.json();
       if (res.ok && data.success) {
         setDeleteSuccessNotice(`Response from "${deleteConfirmResponse.fullName}" has been deleted.`);
+        setDeleteErrorNotice(null);
         setDeleteConfirmResponse(null);
         setSelectedResponse(null);
         onRefresh();
-        setTimeout(() => setDeleteSuccessNotice(null), 4000);
+        setTimeout(() => setDeleteSuccessNotice(null), 5000);
       } else {
-        alert(data.error || 'Failed to delete response');
+        setDeleteErrorNotice(data.error || 'Failed to delete response from Google Sheet.');
+        setDeleteConfirmResponse(null);
       }
     } catch (err: any) {
-      alert(err.message || 'Error deleting response');
+      setDeleteErrorNotice(err.message || 'Error communicating with server while deleting response.');
+      setDeleteConfirmResponse(null);
     } finally {
       setIsDeletingResponse(false);
     }
@@ -105,16 +110,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 15;
 
+  // Defensive normalization of responses
+  const safeResponses = useMemo(() => {
+    if (!Array.isArray(responses)) return [];
+    return responses.filter((r): r is SubmissionRecord => Boolean(r && typeof r === 'object'));
+  }, [responses]);
+
   // Calculate metrics
   const metrics: DashboardMetrics = useMemo(() => {
-    let total = responses.length;
+    let total = safeResponses.length;
     let active = 0;
     let maybe = 0;
     let notContinuing = 0;
     let firstYear = 0;
     let secondYear = 0;
 
-    responses.forEach((r) => {
+    safeResponses.forEach((r) => {
       const status = (r.continueActiveMember || '').trim().toLowerCase();
       if (status === 'yes') active++;
       else if (status === 'maybe') maybe++;
@@ -126,18 +137,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     });
 
     return { total, active, maybe, notContinuing, firstYear, secondYear };
-  }, [responses]);
+  }, [safeResponses]);
 
   // Filtered responses
   const filteredResponses = useMemo(() => {
-    return responses.filter((r) => {
+    const term = searchTerm.trim().toLowerCase();
+    return safeResponses.filter((r) => {
       // Search
       const searchMatch =
-        !searchTerm.trim() ||
-        r.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        r.admissionNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        r.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        r.branch?.toLowerCase().includes(searchTerm.toLowerCase());
+        !term ||
+        Boolean(r.fullName && r.fullName.toLowerCase().includes(term)) ||
+        Boolean(r.admissionNumber && r.admissionNumber.toLowerCase().includes(term)) ||
+        Boolean(r.email && r.email.toLowerCase().includes(term)) ||
+        Boolean(r.branch && r.branch.toLowerCase().includes(term));
 
       // Year
       const yearMatch = yearFilter === 'ALL' || r.year === yearFilter;
@@ -154,9 +166,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       // Event
       const eventMatch = eventFilter === 'ALL' || r.eventParticipation === eventFilter;
 
-      return searchMatch && yearMatch && sectionMatch && statusMatch && meetingMatch && eventMatch;
+      return Boolean(searchMatch && yearMatch && sectionMatch && statusMatch && meetingMatch && eventMatch);
     });
-  }, [responses, searchTerm, yearFilter, sectionFilter, statusFilter, meetingFilter, eventFilter]);
+  }, [safeResponses, searchTerm, yearFilter, sectionFilter, statusFilter, meetingFilter, eventFilter]);
 
   // Paginated list
   const totalPages = Math.ceil(filteredResponses.length / itemsPerPage) || 1;
@@ -346,6 +358,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <button
             onClick={() => setDeleteSuccessNotice(null)}
             className="text-emerald-700 hover:text-emerald-950 text-xs underline"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {/* Delete Error Banner */}
+      {deleteErrorNotice && (
+        <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-300 flex items-center justify-between gap-3 text-rose-900 text-xs font-semibold shadow-xs animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-rose-600 flex-shrink-0" />
+            <span>{deleteErrorNotice}</span>
+          </div>
+          <button
+            onClick={() => setDeleteErrorNotice(null)}
+            className="text-rose-700 hover:text-rose-950 text-xs underline"
           >
             Dismiss
           </button>
@@ -580,75 +608,88 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </td>
                     </tr>
                   ) : (
-                    paginatedResponses.map((r) => (
-                      <tr
-                        key={r.id || r.admissionNumber}
-                        className="hover:bg-slate-50/70 transition-colors"
-                      >
-                        <td className="py-3 px-4">
-                          <div className="font-semibold text-slate-900">{r.fullName}</div>
-                          <div className="text-[11px] text-slate-400">{r.email}</div>
-                        </td>
-                        <td className="py-3 px-3 font-mono font-medium text-slate-700">
-                          {r.admissionNumber}
-                        </td>
-                        <td className="py-3 px-3">
-                          <span className="font-semibold text-slate-800">{r.year}</span>
-                          <span className="text-slate-400 ml-1">({r.section})</span>
-                        </td>
-                        <td className="py-3 px-3 text-slate-700 max-w-[140px] truncate" title={r.branch}>
-                          {r.branch}
-                        </td>
-                        <td className="py-3 px-3 text-center">
-                          {r.continueActiveMember === 'Yes' && (
-                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                              Active
-                            </span>
-                          )}
-                          {r.continueActiveMember === 'Maybe' && (
-                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
-                              Maybe
-                            </span>
-                          )}
-                          {r.continueActiveMember === 'No' && (
-                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200">
-                              No
-                            </span>
-                          )}
-                          {!['Yes', 'Maybe', 'No'].includes(r.continueActiveMember) && (
-                            <span className="text-slate-400 text-[10px]">
-                              {r.continueActiveMember || '—'}
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-3 px-3 text-slate-700 text-[11px]">
-                          {r.meetingAttendance || '—'}
-                        </td>
-                        <td className="py-3 px-3 text-slate-400 text-[11px] whitespace-nowrap">
-                          {r.timestamp ? r.timestamp.slice(0, 10) : '—'}
-                        </td>
-                        <td className="py-3 px-4 text-right whitespace-nowrap">
-                          <div className="inline-flex items-center gap-1.5 justify-end">
-                            <button
-                              onClick={() => setSelectedResponse(r)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded text-acme-700 hover:text-acme-800 bg-acme-50 hover:bg-acme-100 transition-colors"
-                              title="View response details"
-                            >
-                              <Eye className="w-3.5 h-3.5" />
-                              <span>View</span>
-                            </button>
-                            <button
-                              onClick={() => setDeleteConfirmResponse(r)}
-                              className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 transition-colors"
-                              title="Delete submission"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                              <span className="hidden sm:inline">Delete</span>
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
+                    paginatedResponses.map((r, index) => {
+                      if (!r) return null;
+                      const rowKey = r.id || r.admissionNumber || `resp_${index}`;
+                      const formattedDate = r.timestamp
+                        ? typeof r.timestamp === 'string'
+                          ? r.timestamp.slice(0, 10)
+                          : String(r.timestamp).slice(0, 10)
+                        : '—';
+                      const status = (r.continueActiveMember || '').trim();
+
+                      return (
+                        <tr
+                          key={rowKey}
+                          className="hover:bg-slate-50/70 transition-colors"
+                        >
+                          <td className="py-3 px-4">
+                            <div className="font-semibold text-slate-900">{r.fullName || '—'}</div>
+                            <div className="text-[11px] text-slate-400">{r.email || '—'}</div>
+                          </td>
+                          <td className="py-3 px-3 font-mono font-medium text-slate-700">
+                            {r.admissionNumber || '—'}
+                          </td>
+                          <td className="py-3 px-3">
+                            <span className="font-semibold text-slate-800">{r.year || '—'}</span>
+                            {r.section ? <span className="text-slate-400 ml-1">({r.section})</span> : null}
+                          </td>
+                          <td className="py-3 px-3 text-slate-700 max-w-[140px] truncate" title={r.branch || ''}>
+                            {r.branch || '—'}
+                          </td>
+                          <td className="py-3 px-3 text-center">
+                            {status === 'Yes' && (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                Active
+                              </span>
+                            )}
+                            {status === 'Maybe' && (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                                Maybe
+                              </span>
+                            )}
+                            {status === 'No' && (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200">
+                                No
+                              </span>
+                            )}
+                            {!['Yes', 'Maybe', 'No'].includes(status) && (
+                              <span className="text-slate-400 text-[10px]">
+                                {status || '—'}
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3 px-3 text-slate-700 text-[11px]">
+                            {r.meetingAttendance || '—'}
+                          </td>
+                          <td className="py-3 px-3 text-slate-400 text-[11px] whitespace-nowrap">
+                            {formattedDate}
+                          </td>
+                          <td className="py-3 px-4 text-right whitespace-nowrap">
+                            <div className="inline-flex items-center gap-1.5 justify-end">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedResponse(r)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded text-acme-700 hover:text-acme-800 bg-acme-50 hover:bg-acme-100 transition-colors"
+                                title="View response details"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                <span>View</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDeleteConfirmResponse(r)}
+                                className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 transition-colors"
+                                title="Delete submission"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span className="hidden sm:inline">Delete</span>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>

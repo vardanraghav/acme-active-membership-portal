@@ -9,11 +9,6 @@ export const SOCIETY_INFO = {
   portalTitle: 'ACME Active Membership Portal',
 };
 
-export const INITIAL_ADMIN_CREDENTIALS = {
-  email: process.env.ADMIN_EMAIL || 'adminvardan@acme.in',
-  password: process.env.ADMIN_PASSWORD || 'TEAMINDIA',
-};
-
 export const INDIAN_PHONE_REGEX = /^[6-9]\d{9}$/;
 export const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 

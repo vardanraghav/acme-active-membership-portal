@@ -19,7 +19,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const token = generateAdminSessionToken();
+    const token = generateAdminSessionToken(email);
     const response = NextResponse.json({
       success: true,
       message: 'Authenticated successfully',

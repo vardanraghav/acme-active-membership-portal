@@ -26,12 +26,12 @@ export function getRuntimeConfig(): RuntimeConfig {
     fileConfig.googleAppsScriptUrl ||
     process.env.GOOGLE_APPS_SCRIPT_URL ||
     process.env.NEXT_PUBLIC_GOOGLE_APPS_SCRIPT_URL ||
-    '';
+    'https://script.google.com/macros/s/AKfycbz9eRpJs4rA9JTbwwo87auL2Kqu8_ItTicabZniN7vgkU9sIV3gEMU0Sg23EpQEh_jgVQ/exec';
 
   const sheetUrl =
     fileConfig.googleSheetUrl ||
     process.env.NEXT_PUBLIC_GOOGLE_SHEET_URL ||
-    'https://docs.google.com/spreadsheets/d/1qh2cn7YRFojrQTm7p_GPhHHqz0Qp13KsUm72_b73JM4/edit';
+    'https://docs.google.com/spreadsheets/d/11Y7ZV6EdoyKfUP2KBD9TJl3Liacx5JMDQYy3T7AP5bs/edit';
 
   return {
     googleAppsScriptUrl: gasUrl,

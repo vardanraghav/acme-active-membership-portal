@@ -30,3 +30,24 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
+
+/* Subtle architectural and engineering grid pattern */
+.bg-tech-grid {
+  background-image: radial-gradient(rgba(12, 79, 137, 0.08) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.bg-dark-circuit {
+  background-color: #071325;
+  background-image: 
+    radial-gradient(circle at 10% 20%, rgba(12, 141, 228, 0.12) 0%, transparent 40%),
+    radial-gradient(circle at 90% 80%, rgba(217, 119, 6, 0.08) 0%, transparent 40%),
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 28px 28px, 28px 28px;
+}
+
+/* Soft gold subtle highlight */
+.border-gold-accent {
+  border-color: rgba(217, 119, 6, 0.35);
+}

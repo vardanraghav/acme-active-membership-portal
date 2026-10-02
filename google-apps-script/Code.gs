@@ -26,8 +26,8 @@
 
 var CONFIG = {
   // Attached Google Sheet ID:
-  // https://docs.google.com/spreadsheets/d/1qh2cn7YRFojrQTm7p_GPhHHqz0Qp13KsUm72_b73JM4/edit
-  SPREADSHEET_ID: "1qh2cn7YRFojrQTm7p_GPhHHqz0Qp13KsUm72_b73JM4",
+  // https://docs.google.com/spreadsheets/d/11Y7ZV6EdoyKfUP2KBD9TJl3Liacx5JMDQYy3T7AP5bs/edit
+  SPREADSHEET_ID: "11Y7ZV6EdoyKfUP2KBD9TJl3Liacx5JMDQYy3T7AP5bs",
 
   RESPONSES_SHEET_NAME: "Responses",
   QUESTIONS_SHEET_NAME: "Questions",
@@ -42,7 +42,12 @@ var CONFIG = {
  */
 function getSpreadsheet() {
   if (CONFIG.SPREADSHEET_ID && CONFIG.SPREADSHEET_ID.trim() !== "") {
-    return SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID.trim());
+    try {
+      return SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID.trim());
+    } catch (e) {
+      // Fallback if container-bound or permissions
+      return SpreadsheetApp.getActiveSpreadsheet();
+    }
   }
   return SpreadsheetApp.getActiveSpreadsheet();
 }
@@ -61,12 +66,14 @@ function jsonResponse(data) {
 function doGet(e) {
   try {
     var params = e ? e.parameter : {};
-    var action = params.action || "ping";
+    var action = params.action || "health";
 
-    if (action === "ping") {
+    if (action === "health" || action === "ping") {
       return jsonResponse({
         success: true,
+        status: "healthy",
         message: "ACME Society Google Apps Script Bridge is active.",
+        spreadsheetId: CONFIG.SPREADSHEET_ID,
         timestamp: new Date().toISOString()
       });
     }
@@ -79,7 +86,7 @@ function doGet(e) {
       });
     }
 
-    if (action === "getQuestions") {
+    if (action === "questions" || action === "getQuestions") {
       var ss = getSpreadsheet();
       var qSheet = ss.getSheetByName(CONFIG.QUESTIONS_SHEET_NAME);
       if (!qSheet) {
@@ -93,9 +100,14 @@ function doGet(e) {
         var headers = rows[0];
         for (var i = 1; i < rows.length; i++) {
           var row = rows[i];
-          if (!row[0]) continue; // Skip empty row
+          if (!row[0] && !row[1]) continue; // Skip completely empty row
+
+          var qId = String(row[0] || "").trim();
+          if (!qId) {
+            qId = "Q" + i;
+          }
           
-          var isEnabled = String(row[6]).toLowerCase() === "true" || row[6] === true;
+          var isEnabled = String(row[6]).toLowerCase() === "true" || row[6] === true || String(row[6]).toLowerCase() === "yes";
           // If not admin request, only return enabled questions
           var isAdmin = params.auth === CONFIG.ADMIN_PASSWORD;
           if (!isAdmin && !isEnabled) {
@@ -112,13 +124,17 @@ function doGet(e) {
             }
           }
 
+          var rawPage = String(row[2] || "").toLowerCase();
+          var pageNum = (rawPage === "1" || rawPage.indexOf("1") !== -1 || rawPage.indexOf("member") !== -1) ? 1 : 2;
+
           questions.push({
-            id: String(row[0]),
-            questionText: String(row[1]),
-            page: Number(row[2]) || 2,
-            questionType: String(row[3]),
+            id: qId,
+            questionId: qId,
+            questionText: String(row[1] || ""),
+            page: pageNum,
+            questionType: String(row[3] || "Short Answer"),
             options: optionsArr,
-            required: String(row[5]).toLowerCase() === "true" || row[5] === true,
+            required: String(row[5]).toLowerCase() === "true" || row[5] === true || String(row[5]).toLowerCase() === "yes",
             enabled: isEnabled,
             order: Number(row[7]) || i
           });
@@ -136,7 +152,7 @@ function doGet(e) {
       });
     }
 
-    if (action === "getResponses") {
+    if (action === "responses" || action === "getResponses") {
       // Validate admin auth
       if (params.auth !== CONFIG.ADMIN_PASSWORD) {
         return jsonResponse({ success: false, error: "Unauthorized access" });
@@ -205,11 +221,11 @@ function doPost(e) {
   try {
     var raw = e.postData.contents;
     var data = JSON.parse(raw);
-    var action = data.action || "submit";
+    var action = data.action || "submitResponse";
 
     // 1. Submit Member Form
-    if (action === "submit") {
-      return handleSubmit(data);
+    if (action === "submitResponse" || action === "submit") {
+      return submitResponse(data);
     }
 
     // 2. Admin Verification
@@ -233,7 +249,7 @@ function doPost(e) {
     }
 
     // 4. Edit Dynamic Question
-    if (action === "editQuestion") {
+    if (action === "updateQuestion" || action === "editQuestion") {
       return handleEditQuestion(data.question);
     }
 
@@ -257,103 +273,126 @@ function doPost(e) {
       return handleDeleteResponse(data.responseId, data.admissionNumber, data.email);
     }
 
-    return jsonResponse({ success: false, error: "Unknown POST action: " + action });
+    return jsonResponse({ success: false, error: "Unknown POST action: " + action, details: "Action " + action + " is not recognized" });
   } catch (err) {
-    return jsonResponse({ success: false, error: err.toString() });
+    return jsonResponse({ success: false, error: "Submission failed", details: err.toString() });
   }
 }
 
 /**
- * Handles member application submission
+ * Handles member application submission and records to Google Sheet
+ */
+function submitResponse(payload) {
+  try {
+    var targetId = "11Y7ZV6EdoyKfUP2KBD9TJl3Liacx5JMDQYy3T7AP5bs";
+    var ss;
+    try {
+      ss = SpreadsheetApp.openById(targetId);
+    } catch (err) {
+      ss = getSpreadsheet();
+    }
+    var sheet = ss.getSheetByName(CONFIG.RESPONSES_SHEET_NAME);
+    if (!sheet) {
+      setupSpreadsheet();
+      sheet = ss.getSheetByName(CONFIG.RESPONSES_SHEET_NAME);
+    }
+
+    // Validate required fields
+    if (!payload.fullName || !payload.admissionNumber || !payload.email || !payload.phone || !payload.year || !payload.branch || !payload.section) {
+      return jsonResponse({
+        success: false,
+        error: "Missing required member details on Page 1.",
+        details: "Validation failed: required fields missing in payload"
+      });
+    }
+
+    if (!payload.agreedToTerms) {
+      return jsonResponse({
+        success: false,
+        error: "Confirmation agreement is required before submitting.",
+        details: "agreedToTerms is not true"
+      });
+    }
+
+    // Current timestamp formatted for IST / locale
+    var now = new Date();
+    var formattedDate = Utilities.formatDate(now, "Asia/Kolkata", "yyyy-MM-dd HH:mm:ss");
+
+    var areasString = "";
+    if (Array.isArray(payload.areasOfInterest)) {
+      areasString = payload.areasOfInterest.join(", ");
+    } else {
+      areasString = String(payload.areasOfInterest || "");
+    }
+
+    var row = [
+      formattedDate,
+      payload.fullName,
+      payload.admissionNumber,
+      payload.email,
+      payload.phone,
+      payload.year,
+      payload.branch,
+      payload.section,
+      payload.continueActiveMember || "",
+      payload.activityParticipation || "",
+      payload.meetingAttendance || "",
+      payload.groupCommunication || "",
+      payload.eventParticipation || "",
+      areasString,
+      payload.contribution || "",
+      payload.suggestions || ""
+    ];
+
+    sheet.appendRow(row);
+
+    // Systematic row styling & formatting
+    var lastRow = sheet.getLastRow();
+    var rowRange = sheet.getRange(lastRow, 1, 1, row.length);
+    rowRange.setVerticalAlignment("middle");
+    rowRange.setFontFamily("Arial");
+    rowRange.setFontSize(10);
+
+    // Phone number formatted as plain text
+    sheet.getRange(lastRow, 5).setNumberFormat("@");
+
+    // Center-aligned columns for clean data presentation
+    var centerCols = [1, 3, 5, 6, 8, 9, 10, 11, 12, 13];
+    for (var c = 0; c < centerCols.length; c++) {
+      sheet.getRange(lastRow, centerCols[c]).setHorizontalAlignment("center");
+    }
+
+    // Wrap text on longer answers
+    var wrapCols = [14, 15, 16];
+    for (var w = 0; w < wrapCols.length; w++) {
+      sheet.getRange(lastRow, wrapCols[w]).setWrap(true);
+    }
+
+    // Alternating row background for clean readability
+    if (lastRow % 2 === 0) {
+      rowRange.setBackground("#F8FAFC");
+    } else {
+      rowRange.setBackground("#FFFFFF");
+    }
+
+    return jsonResponse({
+      success: true,
+      message: "Response submitted successfully"
+    });
+  } catch (err) {
+    return jsonResponse({
+      success: false,
+      error: "Submission failed",
+      details: err.toString()
+    });
+  }
+}
+
+/**
+ * Backward compatibility alias
  */
 function handleSubmit(payload) {
-  var ss = getSpreadsheet();
-  var sheet = ss.getSheetByName(CONFIG.RESPONSES_SHEET_NAME);
-  if (!sheet) {
-    setupSpreadsheet();
-    sheet = ss.getSheetByName(CONFIG.RESPONSES_SHEET_NAME);
-  }
-
-  // Validate required fields
-  if (!payload.fullName || !payload.admissionNumber || !payload.email || !payload.phone || !payload.year || !payload.branch || !payload.section) {
-    return jsonResponse({
-      success: false,
-      error: "Missing required member details on Page 1."
-    });
-  }
-
-  if (!payload.agreedToTerms) {
-    return jsonResponse({
-      success: false,
-      error: "Confirmation agreement is required before submitting."
-    });
-  }
-
-  // Current timestamp formatted for IST / locale
-  var now = new Date();
-  var formattedDate = Utilities.formatDate(now, "Asia/Kolkata", "yyyy-MM-dd HH:mm:ss");
-
-  var areasString = "";
-  if (Array.isArray(payload.areasOfInterest)) {
-    areasString = payload.areasOfInterest.join(", ");
-  } else {
-    areasString = String(payload.areasOfInterest || "");
-  }
-
-  var row = [
-    formattedDate,
-    payload.fullName,
-    payload.admissionNumber,
-    payload.email,
-    payload.phone,
-    payload.year,
-    payload.branch,
-    payload.section,
-    payload.continueActiveMember || "",
-    payload.activityParticipation || "",
-    payload.meetingAttendance || "",
-    payload.groupCommunication || "",
-    payload.eventParticipation || "",
-    areasString,
-    payload.contribution || "",
-    payload.suggestions || ""
-  ];
-
-  sheet.appendRow(row);
-
-  // Systematic row styling & formatting
-  var lastRow = sheet.getLastRow();
-  var rowRange = sheet.getRange(lastRow, 1, 1, row.length);
-  rowRange.setVerticalAlignment("middle");
-  rowRange.setFontFamily("Arial");
-  rowRange.setFontSize(10);
-
-  // Phone number formatted as plain text
-  sheet.getRange(lastRow, 5).setNumberFormat("@");
-
-  // Center-aligned columns for clean data presentation
-  var centerCols = [1, 3, 5, 6, 8, 9, 10, 11, 12, 13];
-  for (var c = 0; c < centerCols.length; c++) {
-    sheet.getRange(lastRow, centerCols[c]).setHorizontalAlignment("center");
-  }
-
-  // Wrap text on longer answers
-  var wrapCols = [14, 15, 16];
-  for (var w = 0; w < wrapCols.length; w++) {
-    sheet.getRange(lastRow, wrapCols[w]).setWrap(true);
-  }
-
-  // Alternating row background for clean readability
-  if (lastRow % 2 === 0) {
-    rowRange.setBackground("#F8FAFC");
-  } else {
-    rowRange.setBackground("#FFFFFF");
-  }
-
-  return jsonResponse({
-    success: true,
-    message: "Thank you for submitting the ACME Active Membership Form. Your response has been recorded successfully."
-  });
+  return submitResponse(payload);
 }
 
 /**
@@ -529,27 +568,66 @@ function handleDeleteResponse(responseId, admissionNumber, email) {
 
   var data = sheet.getDataRange().getValues();
   if (data.length <= 1) {
-    return jsonResponse({ success: false, error: "No responses found" });
+    return jsonResponse({ success: false, error: "Response not found" });
   }
 
-  // Iterate rows to find match
-  for (var i = 1; i < data.length; i++) {
-    var row = data[i];
-    var rowId = "resp_" + i;
-    var rowAdm = String(row[2] || "").trim().toLowerCase();
-    var rowEmail = String(row[3] || "").trim().toLowerCase();
+  var targetAdm = admissionNumber ? String(admissionNumber).trim().toLowerCase() : "";
+  var targetEmail = email ? String(email).trim().toLowerCase() : "";
+  var targetId = responseId ? String(responseId).trim() : "";
+  var rowIndexToDelete = -1;
 
-    var matchId = responseId && (String(responseId) === rowId || String(responseId) === String(i));
-    var matchAdm = admissionNumber && String(admissionNumber).trim().toLowerCase() === rowAdm;
-    var matchEmail = email && String(email).trim().toLowerCase() === rowEmail;
-
-    if (matchId || matchAdm || matchEmail) {
-      sheet.deleteRow(i + 1);
-      return jsonResponse({ success: true, message: "Response deleted successfully" });
+  // 1. Prefer matching using the response ID if verified
+  if (targetId && targetId.indexOf("resp_") === 0) {
+    var candidateIdx = parseInt(targetId.replace("resp_", ""), 10);
+    if (!isNaN(candidateIdx) && candidateIdx >= 1 && candidateIdx < data.length) {
+      var candRow = data[candidateIdx];
+      var candAdm = String(candRow[2] || "").trim().toLowerCase();
+      var candEmail = String(candRow[3] || "").trim().toLowerCase();
+      // Safely verify candidate row matches provided admissionNumber or email
+      if ((targetAdm && candAdm === targetAdm) || (targetEmail && candEmail === targetEmail) || (!targetAdm && !targetEmail)) {
+        rowIndexToDelete = candidateIdx + 1; // 1-indexed row in sheet
+      }
     }
   }
 
-  return jsonResponse({ success: false, error: "Response not found" });
+  // 2. Otherwise safely match using admission number and/or email
+  if (rowIndexToDelete === -1 && (targetAdm || targetEmail)) {
+    for (var i = 1; i < data.length; i++) {
+      var row = data[i];
+      var rowAdm = String(row[2] || "").trim().toLowerCase();
+      var rowEmail = String(row[3] || "").trim().toLowerCase();
+
+      // Priority 1: Both match
+      if (targetAdm && targetEmail && rowAdm === targetAdm && rowEmail === targetEmail) {
+        rowIndexToDelete = i + 1;
+        break;
+      }
+      // Priority 2: Admission number matches
+      if (targetAdm && rowAdm === targetAdm && (!targetEmail || !rowEmail || rowEmail === targetEmail)) {
+        rowIndexToDelete = i + 1;
+        break;
+      }
+      // Priority 3: Email matches
+      if (targetEmail && rowEmail === targetEmail && (!targetAdm || !rowAdm || rowAdm === targetAdm)) {
+        rowIndexToDelete = i + 1;
+        break;
+      }
+    }
+  }
+
+  // Ensure we never delete the header row
+  if (rowIndexToDelete > 1 && rowIndexToDelete <= sheet.getLastRow()) {
+    sheet.deleteRow(rowIndexToDelete);
+    return jsonResponse({
+      success: true,
+      message: "Response deleted successfully"
+    });
+  }
+
+  return jsonResponse({
+    success: false,
+    error: "Response not found"
+  });
 }
 
 /**
