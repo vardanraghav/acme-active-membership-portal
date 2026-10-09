@@ -5,6 +5,7 @@ import { SubmissionRecord, FormQuestion, DashboardMetrics } from '@/types';
 import { ResponseDetailModal } from './ResponseDetailModal';
 import { ManageQuestions } from './ManageQuestions';
 import { SheetConfigModal } from './SheetConfigModal';
+import { FormControlPanel } from './FormControlPanel';
 import {
   Users,
   CheckCircle,
@@ -43,7 +44,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   isLoading = false,
   onUpdateSheetUrl,
 }) => {
-  const [activeTab, setActiveTab] = useState<'submissions' | 'manage_form'>('submissions');
+  const [activeTab, setActiveTab] = useState<'submissions' | 'manage_form' | 'form_control'>('submissions');
   const [selectedResponse, setSelectedResponse] = useState<SubmissionRecord | null>(null);
   const [deleteConfirmResponse, setDeleteConfirmResponse] = useState<SubmissionRecord | null>(null);
   const [isDeletingResponse, setIsDeletingResponse] = useState(false);
@@ -266,6 +267,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             >
               Manage Form
             </button>
+            <button
+              onClick={() => setActiveTab('form_control')}
+              className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                activeTab === 'form_control'
+                  ? 'bg-white text-slate-900 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <SlidersHorizontal className="w-3 h-3 text-acme-600" />
+              <span>Form Control</span>
+            </button>
           </div>
 
           {/* Open Google Sheet Button */}
@@ -383,8 +395,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* Render active tab */}
       {activeTab === 'manage_form' ? (
         <ManageQuestions questions={questions} onRefresh={onRefresh} />
+      ) : activeTab === 'form_control' ? (
+        <FormControlPanel />
       ) : (
         <>
+          {/* Form Control Status & Quick Access Card */}
+          <FormControlPanel onStatusChange={onRefresh} />
+
           {/* Summary Metric Cards */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
             {/* Total Members */}

@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { MemberFormData, FormQuestion } from '@/types';
+import { MemberFormData, FormQuestion, FormStatusResult } from '@/types';
 import { DEFAULT_QUESTIONS_PAGE_2 } from '@/lib/constants';
 import { StepIndicator } from './StepIndicator';
 import { StepOne } from './StepOne';
 import { StepTwo } from './StepTwo';
 import { SuccessView } from './SuccessView';
+import { Clock, AlertCircle, Calendar, RefreshCw } from 'lucide-react';
 
 const INITIAL_FORM_STATE: MemberFormData = {
   fullName: '',
@@ -35,6 +36,32 @@ export const MemberForm: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitted, setIsSubmitted] = useState<boolean>(false);
+
+  // Form Control status
+  const [formStatus, setFormStatus] = useState<FormStatusResult | null>(null);
+  const [isLoadingStatus, setIsLoadingStatus] = useState<boolean>(true);
+
+  // Fetch form control status
+  const checkStatus = async () => {
+    setIsLoadingStatus(true);
+    try {
+      const res = await fetch('/api/form-status', { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setFormStatus(data);
+        }
+      }
+    } catch (err) {
+      console.warn('Could not check form status:', err);
+    } finally {
+      setIsLoadingStatus(false);
+    }
+  };
+
+  useEffect(() => {
+    checkStatus();
+  }, []);
 
   // Fetch dynamic questions from backend (Google Apps Script via /api/questions)
   useEffect(() => {
@@ -98,6 +125,11 @@ export const MemberForm: React.FC = () => {
       if (response.ok && result?.success) {
         setIsSubmitted(true);
       } else {
+        if (result?.closed) {
+          // If the form has been closed by admin in the meantime, refresh status
+          checkStatus();
+        }
+
         const errorMsg =
           result?.error ||
           (result?.details ? `Error: ${result.details}` : null) ||
@@ -130,6 +162,98 @@ export const MemberForm: React.FC = () => {
     return (
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-6 md:p-10">
         <SuccessView formData={formData} onReset={handleReset} />
+      </div>
+    );
+  }
+
+  // Loading status spinner
+  if (isLoadingStatus) {
+    return (
+      <div className="bg-white rounded-2xl shadow-xl shadow-slate-200/60 border border-slate-200/90 p-12 text-center">
+        <div className="flex flex-col items-center justify-center gap-3">
+          <div className="w-9 h-9 border-3 border-acme-700 border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm font-semibold text-slate-700">Checking form availability...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // NOT YET OPEN State
+  if (formStatus && formStatus.state === 'NOT_YET_OPEN') {
+    return (
+      <div className="relative bg-white rounded-2xl shadow-xl shadow-slate-200/60 border border-amber-200/80 overflow-hidden">
+        <div className="h-2 w-full bg-gradient-to-r from-amber-400 via-amber-500 to-amber-600" />
+        <div className="p-8 sm:p-12 text-center">
+          <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 shadow-xs">
+            <Clock className="w-8 h-8" />
+          </div>
+
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100 text-amber-900 text-xs font-bold mb-3">
+            <span>🟡 NOT YET OPEN</span>
+          </div>
+
+          <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+            ACME Active Membership Form — Not Yet Open
+          </h2>
+
+          <p className="text-base font-semibold text-slate-700 mt-3 max-w-xl mx-auto">
+            Submissions will open at the scheduled time.
+          </p>
+
+          <p className="text-sm text-slate-500 mt-2 max-w-lg mx-auto leading-relaxed">
+            {formStatus.message}
+          </p>
+
+          <div className="mt-8 pt-6 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-center gap-4">
+            <button
+              onClick={checkStatus}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span>Check Again</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // CLOSED State
+  if (formStatus && !formStatus.isOpen) {
+    return (
+      <div className="relative bg-white rounded-2xl shadow-xl shadow-slate-200/60 border border-rose-200/80 overflow-hidden">
+        <div className="h-2 w-full bg-gradient-to-r from-rose-500 via-rose-600 to-rose-700" />
+        <div className="p-8 sm:p-12 text-center">
+          <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 shadow-xs">
+            <AlertCircle className="w-8 h-8" />
+          </div>
+
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-100 text-rose-900 text-xs font-bold mb-3">
+            <span>🔴 CLOSED</span>
+          </div>
+
+          <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+            ACME Active Membership Form — Submissions Closed
+          </h2>
+
+          <p className="text-base font-semibold text-slate-700 mt-3 max-w-xl mx-auto">
+            New responses are currently not being accepted.
+          </p>
+
+          <p className="text-sm text-slate-500 mt-2 max-w-lg mx-auto leading-relaxed">
+            {formStatus.message}
+          </p>
+
+          <div className="mt-8 pt-6 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-center gap-4">
+            <button
+              onClick={checkStatus}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span>Refresh Status</span>
+            </button>
+          </div>
+        </div>
       </div>
     );
   }

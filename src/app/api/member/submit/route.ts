@@ -1,10 +1,30 @@
 import { NextResponse } from 'next/server';
 import { getRuntimeConfig } from '@/lib/config';
+import { getFormStatus } from '@/lib/formControl';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
   try {
+    // 0. Enforce Form Control status at the exact moment of submission
+    const formStatus = await getFormStatus();
+    if (!formStatus.isOpen) {
+      const closedMessage =
+        formStatus.state === 'NOT_YET_OPEN'
+          ? 'The ACME Active Membership Form is not yet open for submissions.'
+          : 'The ACME Active Membership Form is currently closed.';
+
+      return NextResponse.json(
+        {
+          success: false,
+          closed: true,
+          error: closedMessage,
+          details: formStatus.message,
+        },
+        { status: 403 }
+      );
+    }
+
     let body: any = null;
     try {
       body = await request.json();

@@ -31,6 +31,7 @@ var CONFIG = {
 
   RESPONSES_SHEET_NAME: "Responses",
   QUESTIONS_SHEET_NAME: "Questions",
+  SETTINGS_SHEET_NAME: "Settings",
 
   // Master admin password for backend API verification
   ADMIN_PASSWORD: "TEAMINDIA",
@@ -83,6 +84,14 @@ function doGet(e) {
       return jsonResponse({
         success: true,
         message: "Spreadsheet initialized successfully with Responses and Questions sheets."
+      });
+    }
+
+    if (action === "getFormSettings" || action === "formStatus") {
+      var settings = getFormSettingsFromSheet();
+      return jsonResponse({
+        success: true,
+        settings: settings
       });
     }
 
@@ -271,6 +280,23 @@ function doPost(e) {
     // 8. Delete Member Response
     if (action === "deleteResponse") {
       return handleDeleteResponse(data.responseId, data.admissionNumber, data.email);
+    }
+
+    // 9. Form Control Settings
+    if (action === "updateFormSettings") {
+      return handleUpdateFormSettings(data.settings);
+    }
+
+    if (action === "openForm") {
+      return handleUpdateFormSettings({ formMode: "manual", manualStatus: "open" });
+    }
+
+    if (action === "closeForm") {
+      return handleUpdateFormSettings({ formMode: "manual", manualStatus: "closed" });
+    }
+
+    if (action === "useSchedule") {
+      return handleUpdateFormSettings({ formMode: "scheduled" });
     }
 
     return jsonResponse({ success: false, error: "Unknown POST action: " + action, details: "Action " + action + " is not recognized" });
@@ -846,4 +872,107 @@ function formatTimestamp(d) {
     return Utilities.formatDate(d, "Asia/Kolkata", "yyyy-MM-dd HH:mm:ss");
   }
   return String(d);
+}
+
+/**
+ * ============================================================================
+ * FORM CONTROL & SETTINGS SHEET HELPERS
+ * ============================================================================
+ */
+
+function getSettingsSheet() {
+  var ss = getSpreadsheet();
+  var sheet = ss.getSheetByName(CONFIG.SETTINGS_SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(CONFIG.SETTINGS_SHEET_NAME);
+    sheet.appendRow(["Setting", "Value"]);
+    var headerRange = sheet.getRange(1, 1, 1, 2);
+    headerRange.setFontWeight("bold");
+    headerRange.setBackground("#0F172A");
+    headerRange.setFontColor("#FFFFFF");
+    headerRange.setHorizontalAlignment("center");
+    
+    // Add default settings
+    var defaults = [
+      ["formMode", "scheduled"],
+      ["manualStatus", "open"],
+      ["startDate", "2026-10-01"],
+      ["startTime", "00:00"],
+      ["stopDate", "2026-10-31"],
+      ["stopTime", "23:59"],
+      ["timezone", "Asia/Kolkata"],
+      ["updatedAt", new Date().toISOString()]
+    ];
+    for (var i = 0; i < defaults.length; i++) {
+      sheet.appendRow(defaults[i]);
+    }
+    sheet.setColumnWidth(1, 180);
+    sheet.setColumnWidth(2, 280);
+  }
+  return sheet;
+}
+
+function getFormSettingsFromSheet() {
+  var sheet = getSettingsSheet();
+  var rows = sheet.getDataRange().getValues();
+  var settings = {
+    formMode: "scheduled",
+    manualStatus: "open",
+    startDate: "2026-10-01",
+    startTime: "00:00",
+    stopDate: "2026-10-31",
+    stopTime: "23:59",
+    timezone: "Asia/Kolkata",
+    updatedAt: new Date().toISOString()
+  };
+
+  for (var r = 1; r < rows.length; r++) {
+    var key = String(rows[r][0] || "").trim();
+    var val = rows[r][1];
+    if (key && val !== undefined && val !== null) {
+      settings[key] = String(val).trim();
+    }
+  }
+
+  return settings;
+}
+
+function handleUpdateFormSettings(newSettings) {
+  if (!newSettings || typeof newSettings !== "object") {
+    return jsonResponse({ success: false, error: "Invalid settings object" });
+  }
+
+  var sheet = getSettingsSheet();
+  var rows = sheet.getDataRange().getValues();
+  var map = {};
+  for (var r = 1; r < rows.length; r++) {
+    var k = String(rows[r][0] || "").trim();
+    if (k) map[k] = r + 1; // 1-indexed row number
+  }
+
+  var keysToUpdate = Object.keys(newSettings);
+  for (var i = 0; i < keysToUpdate.length; i++) {
+    var key = keysToUpdate[i];
+    var val = String(newSettings[key]);
+    if (map[key]) {
+      sheet.getRange(map[key], 2).setValue(val);
+    } else {
+      sheet.appendRow([key, val]);
+    }
+  }
+
+  // Always update updatedAt timestamp
+  var updatedTime = new Date().toISOString();
+  if (map["updatedAt"]) {
+    sheet.getRange(map["updatedAt"], 2).setValue(updatedTime);
+  } else {
+    sheet.appendRow(["updatedAt", updatedTime]);
+  }
+
+  var latest = getFormSettingsFromSheet();
+  return jsonResponse({
+    success: true,
+    message: "Form control settings saved successfully.",
+    settings: latest
+  });
 }

@@ -72,3 +72,27 @@ export interface DashboardMetrics {
   firstYear: number;
   secondYear: number;
 }
+
+export type FormMode = 'scheduled' | 'manual';
+export type FormManualStatus = 'open' | 'closed';
+export type FormState = 'OPEN' | 'CLOSED' | 'NOT_YET_OPEN';
+
+export interface FormControlSettings {
+  formMode: FormMode;
+  manualStatus: FormManualStatus;
+  startDate: string; // YYYY-MM-DD
+  startTime: string; // HH:mm (24-hour)
+  stopDate: string;  // YYYY-MM-DD
+  stopTime: string;  // HH:mm (24-hour)
+  timezone: string;  // 'Asia/Kolkata'
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+export interface FormStatusResult {
+  state: FormState;
+  isOpen: boolean;
+  message: string;
+  settings: FormControlSettings;
+  currentTimeIst: string;
+}
