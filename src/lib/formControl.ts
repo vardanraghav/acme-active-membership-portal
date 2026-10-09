@@ -218,11 +218,13 @@ export function saveLocalFormControlSettings(settings: Partial<FormControlSettin
 /**
  * Retrieve form control settings from Google Apps Script if available,
  * falling back to local file storage.
+ * Reads either from native getFormSettings action or from the persistent __FORM_CONTROL__ record.
  */
 export async function getFormControlSettings(): Promise<FormControlSettings> {
   const gasUrl = getGasUrl();
   if (gasUrl) {
     try {
+      // 1. Try native getFormSettings if supported by deployed GAS
       const url = new URL(gasUrl);
       url.searchParams.set('action', 'getFormSettings');
 
@@ -238,19 +240,54 @@ export async function getFormControlSettings(): Promise<FormControlSettings> {
         try {
           const data = JSON.parse(text);
           if (data && data.success && data.settings) {
-            // Also sync to local file for fast offline fallback
             saveLocalFormControlSettings(data.settings);
             return {
               ...DEFAULT_FORM_CONTROL_SETTINGS,
               ...data.settings,
             };
           }
-        } catch {
-          // not JSON, fallback to local
-        }
+        } catch {}
+      }
+
+      // 2. Read from persistent __FORM_CONTROL__ row in Questions sheet (works with current deployed GAS)
+      const qUrl = new URL(gasUrl);
+      qUrl.searchParams.set('action', 'questions');
+
+      const qRes = await fetch(qUrl.toString(), {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        redirect: 'follow',
+        cache: 'no-store',
+      });
+
+      if (qRes.ok) {
+        const qText = await qRes.text();
+        try {
+          const qData = JSON.parse(qText);
+          if (qData && qData.success && Array.isArray(qData.questions)) {
+            const row = qData.questions.find((x: any) => {
+              const id = String(x.id ?? x.questionId ?? x['Question ID'] ?? '').trim();
+              return id === '__FORM_CONTROL__';
+            });
+
+            if (row) {
+              const rawPayload = row.questionText ?? row['Question Text'];
+              if (rawPayload && typeof rawPayload === 'string') {
+                const parsedSettings = JSON.parse(rawPayload);
+                if (parsedSettings && typeof parsedSettings === 'object') {
+                  saveLocalFormControlSettings(parsedSettings);
+                  return {
+                    ...DEFAULT_FORM_CONTROL_SETTINGS,
+                    ...parsedSettings,
+                  };
+                }
+              }
+            }
+          }
+        } catch {}
       }
     } catch (err) {
-      // Network/GAS error, fallback to local
+      // Network/GAS error, fallback to local file
     }
   }
 
@@ -259,6 +296,7 @@ export async function getFormControlSettings(): Promise<FormControlSettings> {
 
 /**
  * Persist form control settings to Google Apps Script and local storage.
+ * Works with both updated Code.gs and current production deployment via updateQuestion.
  */
 export async function updateFormControlSettings(
   newSettings: Partial<FormControlSettings>,
@@ -267,10 +305,11 @@ export async function updateFormControlSettings(
   // 1. Save locally first
   const updated = saveLocalFormControlSettings(newSettings);
 
-  // 2. If GAS is configured, sync to Google Sheet Settings sheet
+  // 2. If GAS is configured, sync to Google Sheet
   const gasUrl = getGasUrl();
   if (gasUrl && authPassword) {
     try {
+      // Try native updateFormSettings
       const res = await fetch(gasUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -282,23 +321,74 @@ export async function updateFormControlSettings(
         redirect: 'follow',
       });
 
+      let handled = false;
       if (res.ok) {
         const text = await res.text();
         try {
           const data = JSON.parse(text);
           if (data && data.success) {
-            return {
-              success: true,
-              settings: updated,
-              message: data.message || 'Form settings saved successfully.',
-            };
+            handled = true;
           }
-        } catch {
-          // Non-JSON response
+        } catch {}
+      }
+
+      // If native action was not recognized by production GAS deployment,
+      // sync to the __FORM_CONTROL__ record in the Questions sheet
+      if (!handled) {
+        const payloadJson = JSON.stringify(updated);
+        // Try updateQuestion first
+        const updateRes = await fetch(gasUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'updateQuestion',
+            auth: authPassword,
+            question: {
+              questionId: '__FORM_CONTROL__',
+              questionText: payloadJson,
+              page: 2,
+              questionType: 'Text',
+              options: [],
+              required: false,
+              enabled: false,
+              order: 999,
+            },
+          }),
+          redirect: 'follow',
+        });
+
+        const updateText = await updateRes.text();
+        let updateOk = false;
+        try {
+          const uData = JSON.parse(updateText);
+          if (uData && uData.success) updateOk = true;
+        } catch {}
+
+        // If row doesn't exist yet, insert via addQuestion
+        if (!updateOk) {
+          await fetch(gasUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'addQuestion',
+              auth: authPassword,
+              question: {
+                questionId: '__FORM_CONTROL__',
+                questionText: payloadJson,
+                page: 2,
+                questionType: 'Text',
+                options: [],
+                required: false,
+                enabled: false,
+                order: 999,
+              },
+            }),
+            redirect: 'follow',
+          });
         }
       }
     } catch (err) {
-      // Local save succeeded, return with note
+      // Network error, local save still holds
     }
   }
 

@@ -139,7 +139,13 @@ export async function fetchQuestions(adminAuth?: string): Promise<FormQuestion[]
     }
 
     if (data && data.success && Array.isArray(data.questions) && data.questions.length > 0) {
-      return data.questions.filter(Boolean).map((q: any, i: number) => normalizeQuestion(q, i));
+      return data.questions
+        .filter((q: any) => {
+          if (!q) return false;
+          const qId = String(q.id ?? q.questionId ?? q['Question ID'] ?? '').trim();
+          return qId !== '__FORM_CONTROL__';
+        })
+        .map((q: any, i: number) => normalizeQuestion(q, i));
     }
 
     return DEFAULT_QUESTIONS_PAGE_2;
